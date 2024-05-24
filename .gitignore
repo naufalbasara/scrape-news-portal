@@ -1,1 +1,8 @@
+
 venv
+
+**/client_secret.*
+**/*.crx
+**/.DS_Store
+
+**/result_data
