@@ -4,6 +4,7 @@ venv
 **/client_secret.*
 **/*.crx
 **/.DS_Store
+.DS_Store
 
 **/*.csv
 **/*.xlsx
