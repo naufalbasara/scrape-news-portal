@@ -14,22 +14,6 @@ from utils.GSheet import GSheet
 
 root_dir = get_rootdir()
 
-def handle_ads(driver:webdriver):
-    time.sleep(1)
-    all_iframes = driver.find("iframe")
-    if len(all_iframes) > 0:
-        print("Ad Found\n")
-        driver.execute_script("""
-            var elems = document.getElementsByTagName("iframe"); 
-            for(var i = 0, max = elems.length; i < max; i++)
-                {
-                    elems[i].hidden=true;
-                }
-                            """)
-        print('Total Ads: ' + str(len(all_iframes)))
-    else:
-        print('No frames found')
-
 def get_driver(headless:bool = True, no_sandbox:bool = True) -> webdriver:
     chrome_options = webdriver.ChromeOptions()
     if headless: chrome_options.add_argument('--headless')
@@ -44,11 +28,14 @@ def get_driver(headless:bool = True, no_sandbox:bool = True) -> webdriver:
 
 def getNavLinks(endpoint:str, driver:webdriver, update:bool) -> list[str]:
     result = {'title': [], 'href': []}
+    wait = WebDriverWait(driver, 10)
     driver.get(endpoint)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '#main-menu')))
+    driver.execute_script("window.stop();")
 
     page = BeautifulSoup(driver.page_source, 'html.parser')
     try:
-        menuTag = page.find('div', class_='main-menu', id='main-menu')
+        menuTag = getattr(page.find('div', class_='main-menu', id='main-menu'), 'div', None)
         navs = menuTag.findChildren('ul')
         for nav_list in navs:
             for link in nav_list.find_all('li'):
@@ -61,13 +48,14 @@ def getNavLinks(endpoint:str, driver:webdriver, update:bool) -> list[str]:
                     for link_2 in embedded_list.find_all('li'):
                         result['title'].append(link_2.a['title'])
                         result['href'].append(link_2.a['href'])
+        if update:
+            if os.path.exists(os.path.join(root_dir, 'result_data')) == False:
+                os.mkdir(os.path.join(root_dir, 'result_data'))
+            pd.DataFrame(result).to_excel(os.path.join(root_dir, 'result_data', 'navigation_links.xlsx'))
+            print("File saved locally.")
     except Exception as error:
         print(f'Failed to get nav links due to: {error}')
-
-    if update:
-        pd.DataFrame(result).to_excel(os.path.join(root_dir, 'result_data', 'navigation_links.xlsx'))
-        print("File saved locally.")
-
+    
     return result
 
 def getNewsArticles(driver:webdriver, url:str, publishLimit:datetime) -> list[str]:
@@ -150,26 +138,49 @@ def getArticles(driver:webdriver, wait, url:str, publishLimit:datetime) -> list[
 def getPageContent(driver:webdriver, wait, url:str) -> dict:
     time.sleep(1)
     content_obj = {}
-
-    print('fetching url')
-    driver.get(url)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '.txt-article')))
-    driver.execute_script("window.stop();")
-
-    content_soup = BeautifulSoup(driver.page_source)
-    
-    # get title
-    content_obj['title'] = content_soup.find('h1', id='arttitle').get('text', None)
-    
-    # get writer and editor
-    content_obj['writer'] = content_soup.find('h5', id='penulis')
-
-    # get main news article content
-    container = content_soup.find('div', class_='txt-article')
-
     content = ''
-    for paragraph in container.find_all('p'):
-        content += paragraph.text + '\n'
+    print('fetching url')
+
+    # get total page
+    try:
+        driver.get(url)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '.txt-article')))
+        driver.execute_script("window.stop();")
+        content_soup = BeautifulSoup(driver.page_source)
+        paging_container = getattr(content_soup.find('div', class_='paging'), 'div', None)
+        # get title
+        content_obj['title'] = getattr(content_soup.find('h1', id='arttitle'), 'text', None)
+            
+        # get writer and editor
+        content_obj['writer'] = getattr(content_soup.find('h5', id='penulis'), 'text', None)
+            
+        # get main news article content
+        container = content_soup.find('div', class_='txt-article')
+        for paragraph in container.find_all('p'):
+            content += paragraph.text + '\n'
+
+        if paging_container != None:
+            totalPage = len(paging_container.findChildren('a'))
+            for numberPage in range(2, totalPage+1):
+                driver.get(url + f'?page={numberPage}')
+                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '.txt-article')))
+                driver.execute_script("window.stop();")
+                content_soup = BeautifulSoup(driver.page_source)
+                
+                # get title
+                content_obj['title'] = getattr(content_soup.find('h1', id='arttitle'), 'text', None)
+                    
+                # get writer and editor
+                content_obj['writer'] = getattr(content_soup.find('h5', id='penulis'), 'text', None)
+                
+                # get main news article content
+                container = content_soup.find('div', class_='txt-article')
+                for paragraph in container.find_all('p'):
+                    content += paragraph.text + '\n'
+    except Exception as error:
+        print(f'[ERROR]: Failed due to {error}')
+        totalPage = 1
+        
     content_obj['content'] = content
 
     return content_obj
@@ -182,23 +193,12 @@ if __name__ == "__main__":
     driver, wait = get_driver(headless=False, no_sandbox=False)
     driver.implicitly_wait(5)
 
-    # get all navigation links
+    # # get all navigation links
     # nav_links = getNavLinks(endpoint, driver=driver, update=True)
     # nav_df = pd.read_excel(os.path.join(root_dir, 'result_data/navigation_links.xlsx'))
     # nav_df = nav_df.set_index('title').loc[selected_menu, :]
 
-    # # get all articles in each menu
-    # newsArticles = {'menu': [], 'list':[]}
-    # for idx, url in nav_df.iterrows():
-    #     # get all news article from each link
-    #     print(f'=============== fetching from {url["href"]} ===============')
-    #     print()
-    #     newsArticles['menu'].append(idx)
-    #     newsArticles['list'].append(getArticles(driver,wait, url['href'], datetime.now()-relativedelta(months=5)))
-    #     break
-    
-    # pd.DataFrame(newsArticles).reset_index().to_excel(os.path.join(root_dir, 'result_data', 'articleList.xlsx'))
-
+    # get all articles in each menu
     selected_menu = ['Pemilu', 'Super Ball', 'Travel', 'Otomotif', 'Techno', 'Kesehatan']
     obj = {
         'Super Ball': {'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
@@ -219,19 +219,19 @@ if __name__ == "__main__":
                      'callback':'jQuery36308512665524126286_1716523482026', 'start':'0','img':'thumb2', 'section':'70880','category':'','section_name':'kesehatan', '_':'kesehatan'}
         }
     
-    # # get all the articles in each of the submenu
-    # for category in obj.keys():
-    #     url = obj[category]['url']
-    #     for _ in range(0, 1020, 20):
-    #         url = f"{url}callback={obj[category]['callback']}&start={_+1 if _!=0 else _}&img={obj[category]['img']}&section={obj[category]['section']}&category={obj[category]['category']}&section_name={obj[category]['section_name']}&_={obj[category]['_']}"
-    #         driver.get(url)
-    #         soup = BeautifulSoup(driver.page_source,'html.parser')
-    #         callback = url[re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[0]:re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[1]-1]
-    #         callback = callback[callback.index('=')+2:]
-    #         content = soup.find('pre').text
-    #         content = content[re.search(callback, content).end()+1:len(content)-1]
-    #         with open(os.path.join(root_dir, f'result_data/article_links/{category}/start-{_+1}.json'), 'w') as json_file:
-    #             json.dump(content, json_file)
+    # get all the articles in each of the submenu
+    for category in obj.keys():
+        url = obj[category]['url']
+        for _ in range(0, 1020, 20):
+            url = f"{url}callback={obj[category]['callback']}&start={_+1 if _!=0 else _}&img={obj[category]['img']}&section={obj[category]['section']}&category={obj[category]['category']}&section_name={obj[category]['section_name']}&_={obj[category]['_']}"
+            driver.get(url)
+            soup = BeautifulSoup(driver.page_source,'html.parser')
+            callback = url[re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[0]:re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[1]-1]
+            callback = callback[callback.index('=')+2:]
+            content = soup.find('pre').text
+            content = content[re.search(callback, content).end()+1:len(content)-1]
+            with open(os.path.join(root_dir, f'result_data/article_links/{category}/start-{_+1}.json'), 'w') as json_file:
+                json.dump(content, json_file)
 
     # get all the page content
     menu_list = []
@@ -274,9 +274,9 @@ if __name__ == "__main__":
 
     try:
         print('saving to csv...')
-        pd.DataFrame({'label':menu_list, 'content': content_list}).to_csv(os.path.join(root_dir, 'result_data/result.csv'))
+        pd.DataFrame({'label':menu_list, 'content': content_list, 'writer': writer_list, 'time': time_list}).to_csv(os.path.join(root_dir, f'result_data/{date.today().strftime('%d-%B-%Y')}_result.csv'))
     except:
         print('saving to excel...')
-        pd.DataFrame({'label':menu_list, 'content': content_list}).to_excel(os.path.join(root_dir, 'result_data/result.xlsx'))
+        pd.DataFrame({'label':menu_list, 'content': content_list, 'writer': writer_list, 'time': time_list}).to_excel(os.path.join(root_dir, f'result_data/{date.now().strftime('%d-%B-%Y')}_result.csv'))
 
     driver.close()
