@@ -188,6 +188,8 @@ def getPageContent(driver:webdriver, wait, url:str) -> dict:
 if __name__ == "__main__":
     endpoint = 'https://surabaya.tribunnews.com/'
     selected_menu = ['Pemilu', 'Super Ball', 'Travel', 'Otomotif', 'Techno', 'Kesehatan']
+    time_filter = True
+    months_back = 5
 
     # initiate driver object
     driver, wait = get_driver(headless=False, no_sandbox=False)
@@ -198,8 +200,8 @@ if __name__ == "__main__":
     # nav_df = pd.read_excel(os.path.join(root_dir, 'result_data/navigation_links.xlsx'))
     # nav_df = nav_df.set_index('title').loc[selected_menu, :]
 
-    # get all articles in each menu
-    selected_menu = ['Pemilu', 'Super Ball', 'Travel', 'Otomotif', 'Techno', 'Kesehatan']
+    # get all the articles link in each of the submenu
+    selected_obj = {}
     obj = {
         'Super Ball': {'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
                        'callback':'jQuery36307699751906099292_1716523270689', 'start':'0','img':'thumb2', 'section':'70877','category':'','section_name':'superball', '_':'1716523270690'},
@@ -218,12 +220,16 @@ if __name__ == "__main__":
         'Kesehatan':{'url':'https://surabaya.tribunnews.com/ajax/latest_section?',
                      'callback':'jQuery36308512665524126286_1716523482026', 'start':'0','img':'thumb2', 'section':'70880','category':'','section_name':'kesehatan', '_':'kesehatan'}
         }
+    for menu in selected_menu:
+        selected_obj[menu] = obj[menu]
     
-    # get all the articles in each of the submenu
-    for category in obj.keys():
-        url = obj[category]['url']
+    for category in selected_obj.keys():
+        if os.path.exists(os.path.join(root_dir, f'result_data/article_links/{category}')) == False:
+            os.mkdir(os.path.join(root_dir, f'result_data/article_links/{category}'))
+
+        url = selected_obj[category]['url']
         for _ in range(0, 1020, 20):
-            url = f"{url}callback={obj[category]['callback']}&start={_+1 if _!=0 else _}&img={obj[category]['img']}&section={obj[category]['section']}&category={obj[category]['category']}&section_name={obj[category]['section_name']}&_={obj[category]['_']}"
+            url = f"{url}callback={selected_obj[category]['callback']}&start={_+1 if _!=0 else _}&img={selected_obj[category]['img']}&section={selected_obj[category]['section']}&category={selected_obj[category]['category']}&section_name={selected_obj[category]['section_name']}&_={selected_obj[category]['_']}"
             driver.get(url)
             soup = BeautifulSoup(driver.page_source,'html.parser')
             callback = url[re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[0]:re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[1]-1]
@@ -247,8 +253,9 @@ if __name__ == "__main__":
                     print(fp)
                     for post in posts:
                         print(f"============= GETTING CONTENT FOR POST {post['title']} ({datetime.fromisoformat(post['date'])}) =============")
-                        if datetime.fromisoformat(post['date']) <= datetime.now().replace(tzinfo=pytz.UTC) - relativedelta(months=5):
-                            break
+                        if time_filter:
+                            if datetime.fromisoformat(post['date']) <= datetime.now().replace(tzinfo=pytz.UTC) - relativedelta(months=months_back):
+                                break
 
                         try:
                             content_result_obj = getPageContent(driver, wait, post['url'])
@@ -274,9 +281,9 @@ if __name__ == "__main__":
 
     try:
         print('saving to csv...')
-        pd.DataFrame({'label':menu_list, 'content': content_list, 'writer': writer_list, 'time': time_list}).to_csv(os.path.join(root_dir, f'result_data/{date.today().strftime('%d-%B-%Y')}_result.csv'))
+        pd.DataFrame({'label':menu_list, 'content': content_list, 'writer': writer_list, 'time': time_list}).to_csv(os.path.join(root_dir, f'result_data/{date.today().strftime("%d-%B-%Y")}_result.csv'))
     except:
         print('saving to excel...')
-        pd.DataFrame({'label':menu_list, 'content': content_list, 'writer': writer_list, 'time': time_list}).to_excel(os.path.join(root_dir, f'result_data/{date.now().strftime('%d-%B-%Y')}_result.csv'))
+        pd.DataFrame({'label':menu_list, 'content': content_list, 'writer': writer_list, 'time': time_list}).to_excel(os.path.join(root_dir, f'result_data/{date.now().strftime("%d-%B-%Y")}_result.csv'))
 
     driver.close()
