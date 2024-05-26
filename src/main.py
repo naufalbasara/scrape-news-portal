@@ -135,6 +135,59 @@ def getArticles(driver:webdriver, wait, url:str, publishLimit:datetime) -> list[
 
     return newsLinks
 
+def getArticleLinks(driver:webdriver, method:str, selected_menu:list) -> list[str]:
+    obj = {
+            'Super Ball': {'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
+                        'callback':'jQuery36307699751906099292_1716523270689', 'start':'0','img':'thumb2', 'section':'70877','category':'','section_name':'superball', '_':'1716523270690'},
+            'Pemilu': {
+                'url':'https://surabaya.tribunnews.com/ajax/latest_section?',
+                'callback':'jQuery3630683777923478224_1716523392512', 'start':'0','img':'thumb2', 'section':'70884','category':'','section_name':'pemilu', '_':'1716523392513'},
+            'Travel': {
+                'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
+                'callback':'jQuery36302362740593506103_1716523421432', 'start':'0','img':'thumb2', 'section':'70826','category':'','section_name':'travel', '_':'1716523421433'},
+            'Otomotif': {
+                'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
+                'callback':'jQuery363038001083309593753_1716523446362', 'start':'0','img':'thumb2', 'section':'70879','category':'','section_name':'otomotif', '_':'1716523446363'},
+            'Techno':{
+                'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
+                'callback':'jQuery36309681226112120138_1716523467217', 'start':'0','img':'thumb2', 'section':'70825','category':'','section_name':'techno', '_':'1716523467218'},
+            'Kesehatan':{'url':'https://surabaya.tribunnews.com/ajax/latest_section?',
+                        'callback':'jQuery36308512665524126286_1716523482026', 'start':'0','img':'thumb2', 'section':'70880','category':'','section_name':'kesehatan', '_':'kesehatan'}
+            }
+    selected_obj = {}
+    result_obj = {}
+
+    for menu in selected_menu:
+        selected_obj[menu] = obj[menu]
+    
+    for category in selected_obj.keys():
+        result_obj[category] = []
+        if os.path.exists(os.path.join(root_dir, f'result_data/article_links/{category}')) == False:
+            os.mkdir(os.path.join(root_dir, f'result_data/article_links/{category}'))
+            
+        url = selected_obj[category]['url']
+        for _ in range(0, 1020, 20):
+            if method == 'selenium':
+                url = f"{url}callback={selected_obj[category]['callback']}&start={_+1 if _!=0 else _}&img={selected_obj[category]['img']}&section={selected_obj[category]['section']}&category={selected_obj[category]['category']}&section_name={selected_obj[category]['section_name']}&_={selected_obj[category]['_']}"
+                driver.get(url)
+                soup = BeautifulSoup(driver.page_source,'html.parser')
+                callback = url[re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[0]:re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[1]-1]
+                callback = callback[callback.index('=')+2:]
+                content = soup.find('pre').text
+                content = content[re.search(callback, content).end()+1:len(content)-1]
+                with open(os.path.join(root_dir, f'result_data/article_links/{category}/start-{_+1}.json'), 'w') as json_file:
+                    json.dump(content, json_file)
+
+            elif method == 'requests':
+                url = f"{url}start={_+1 if _!=0 else _}&img={selected_obj[category]['img']}&section={selected_obj[category]['section']}&category={selected_obj[category]['category']}&section_name={selected_obj[category]['section_name']}&_={selected_obj[category]['_']}"
+                res = requests.get(url, headers={'User-Agent':'Thunder Client (https://www.thunderclient.com)','Content-Type': 'application/javascript'})
+                if res.json()['posts'] == 'no data here': break
+
+                for post in res.json()['posts']:
+                    result_obj[category].append({'title':post['title'], 'url':post['url'], 'date':post['date']})
+
+    return result_obj
+
 def getPageContent(driver:webdriver, wait, url:str) -> dict:
     time.sleep(1)
     content_obj = {}
@@ -195,49 +248,13 @@ if __name__ == "__main__":
     driver, wait = get_driver(headless=False, no_sandbox=False)
     driver.implicitly_wait(5)
 
-    # # get all navigation links
-    # nav_links = getNavLinks(endpoint, driver=driver, update=True)
-    # nav_df = pd.read_excel(os.path.join(root_dir, 'result_data/navigation_links.xlsx'))
-    # nav_df = nav_df.set_index('title').loc[selected_menu, :]
+    # get all navigation links
+    nav_links = getNavLinks(endpoint, driver=driver, update=True)
+    nav_df = pd.read_excel(os.path.join(root_dir, 'result_data/navigation_links.xlsx'))
+    nav_df = nav_df.set_index('title').loc[selected_menu, :]
 
     # get all the articles link in each of the submenu
-    selected_obj = {}
-    obj = {
-        'Super Ball': {'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
-                       'callback':'jQuery36307699751906099292_1716523270689', 'start':'0','img':'thumb2', 'section':'70877','category':'','section_name':'superball', '_':'1716523270690'},
-        'Pemilu': {
-            'url':'https://surabaya.tribunnews.com/ajax/latest_section?',
-            'callback':'jQuery3630683777923478224_1716523392512', 'start':'0','img':'thumb2', 'section':'70884','category':'','section_name':'pemilu', '_':'1716523392513'},
-        'Travel': {
-            'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
-            'callback':'jQuery36302362740593506103_1716523421432', 'start':'0','img':'thumb2', 'section':'70826','category':'','section_name':'travel', '_':'1716523421433'},
-        'Otomotif': {
-            'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
-            'callback':'jQuery363038001083309593753_1716523446362', 'start':'0','img':'thumb2', 'section':'70879','category':'','section_name':'otomotif', '_':'1716523446363'},
-        'Techno':{
-            'url': 'https://surabaya.tribunnews.com/ajax/latest_section?',
-            'callback':'jQuery36309681226112120138_1716523467217', 'start':'0','img':'thumb2', 'section':'70825','category':'','section_name':'techno', '_':'1716523467218'},
-        'Kesehatan':{'url':'https://surabaya.tribunnews.com/ajax/latest_section?',
-                     'callback':'jQuery36308512665524126286_1716523482026', 'start':'0','img':'thumb2', 'section':'70880','category':'','section_name':'kesehatan', '_':'kesehatan'}
-        }
-    for menu in selected_menu:
-        selected_obj[menu] = obj[menu]
-    
-    for category in selected_obj.keys():
-        if os.path.exists(os.path.join(root_dir, f'result_data/article_links/{category}')) == False:
-            os.mkdir(os.path.join(root_dir, f'result_data/article_links/{category}'))
-
-        url = selected_obj[category]['url']
-        for _ in range(0, 1020, 20):
-            url = f"{url}callback={selected_obj[category]['callback']}&start={_+1 if _!=0 else _}&img={selected_obj[category]['img']}&section={selected_obj[category]['section']}&category={selected_obj[category]['category']}&section_name={selected_obj[category]['section_name']}&_={selected_obj[category]['_']}"
-            driver.get(url)
-            soup = BeautifulSoup(driver.page_source,'html.parser')
-            callback = url[re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[0]:re.search(r'callback=jQuery[0-9]+_[0-9]*&', url).span()[1]-1]
-            callback = callback[callback.index('=')+2:]
-            content = soup.find('pre').text
-            content = content[re.search(callback, content).end()+1:len(content)-1]
-            with open(os.path.join(root_dir, f'result_data/article_links/{category}/start-{_+1}.json'), 'w') as json_file:
-                json.dump(content, json_file)
+    articleLinks = getArticleLinks(driver, 'requests', selected_menu)
 
     # get all the page content
     menu_list = []
@@ -245,7 +262,35 @@ if __name__ == "__main__":
     writer_list = []
     time_list = []
     for menu in selected_menu:
+        # ========================== Read direct from API response JSON result ==========================
         print(f"============= GETTING CONTENT FOR MENU {menu} =============")
+
+        for post in articleLinks[menu]:
+            try:
+                if time_filter:
+                    if datetime.fromisoformat(post['date']) <= datetime.now().replace(tzinfo=pytz.UTC) - relativedelta(months=months_back):
+                        break
+                content_result_obj = getPageContent(driver, wait, post['url'])
+                menu_list.append(menu)
+                content_list.append(content_result_obj['content'])
+                writer_list.append(content_result_obj['writer'])
+                time_list.append(post['date'])
+                            
+                # checkpoint every 100 data
+                if len(content_list)%100 == 0:
+                    print(f'saving to csv {len(content_list)}...')
+                    pd.DataFrame({'label':menu_list, 'content': content_list}).to_csv(os.path.join(root_dir, f'result_data/cp_result-{len(content_list)}.csv'))
+
+            except Exception as error:
+                print(f"============= FAILED AT POST {post['title']}: {error} =============")
+                menu_list.append(None)
+                content_list.append(None)
+                writer_list.append(None)
+                time_list.append(None)
+        # ========================== END OF CODE for API response JSON result ==========================
+
+
+        # ========================== Read from JSON files ==========================
         for fp in os.listdir(os.path.join(root_dir, 'result_data', 'article_links', menu)):
             try:
                 with open(os.path.join(root_dir, 'result_data', 'article_links', menu, fp), 'r') as json_file:
@@ -277,7 +322,7 @@ if __name__ == "__main__":
                             time_list.append(None)
             except Exception as error:
                 print(f"============= FAILED TO READ JSON {fp}: {error} =============")
-
+        # ========================== END OF CODE for JSON files ==========================
 
     try:
         print('saving to csv...')
