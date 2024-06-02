@@ -159,14 +159,14 @@ def getArticleLinks(driver:webdriver, method:str, selected_menu:list) -> list[st
 
     for menu in selected_menu:
         selected_obj[menu] = obj[menu]
-    
+
     for category in selected_obj.keys():
         result_obj[category] = []
         if os.path.exists(os.path.join(root_dir, f'result_data/article_links/{category}')) == False:
             os.mkdir(os.path.join(root_dir, f'result_data/article_links/{category}'))
             
-        url = selected_obj[category]['url']
         for _ in range(0, 1020, 20):
+            url = selected_obj[category]['url']
             if method == 'selenium':
                 url = f"{url}callback={selected_obj[category]['callback']}&start={_+1 if _!=0 else _}&img={selected_obj[category]['img']}&section={selected_obj[category]['section']}&category={selected_obj[category]['category']}&section_name={selected_obj[category]['section_name']}&_={selected_obj[category]['_']}"
                 driver.get(url)
@@ -192,7 +192,7 @@ def getPageContent(driver:webdriver, wait, url:str) -> dict:
     time.sleep(1)
     content_obj = {}
     content = ''
-    print('fetching url')
+    print(f'fetching {url}')
 
     # get total page
     try:
